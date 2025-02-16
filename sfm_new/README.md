@@ -212,7 +212,107 @@ Incrementally refine the 3D reconstruction by processing additional images.
 - **Reprojection Error:**  
   Reprojection error is computed for the new points to validate the pose estimation and triangulation.
 
----
+
+### Reprojection Error - Overview
+
+After reconstructing a set of 3D points from multiple images, we want to verify that these points are consistent with the original image measurements. The reprojection error does exactly that by comparing:
+- **Observed Keypoints:** The 2D feature points detected in the image.
+- **Reprojected Points:** The 3D points projected back onto the image plane using the camera's intrinsic parameters and the estimated pose.
+
+A lower reprojection error indicates that the 3D reconstruction and camera pose estimation are accurate.
+
+#### Detailed Steps
+
+#### 1. Extract the Camera Pose
+
+The camera pose is represented by a transformation matrix that combines a rotation matrix \( R \) and a translation vector \( t \). These parameters are essential for projecting 3D points into the 2D image space.
+
+- **Rotation Extraction:**  
+  The rotation part is stored in the top-left 3×3 submatrix of the transformation matrix. To use it with OpenCV’s projection functions, it is converted using the Rodrigues transformation:
+  ```python
+  R, _ = cv2.Rodrigues(trans_mat[:3, :3])
+  ```
+  This converts the rotation matrix (or rotation vector) into a suitable format for projection.
+
+#### 2. Project 3D Points to the Image Plane
+
+With the camera pose \( (R, t) \) and the intrinsic camera matrix \( K \), we can project each 3D point (from the triangulated cloud) into the 2D image plane.
+
+- **Using OpenCV’s `projectPoints`:**  
+  The function `cv2.projectPoints` is used to compute the 2D image coordinates for each 3D point:
+  ```python
+  kp_reprojected, _ = cv2.projectPoints(cloud, R, trans_mat[:3, 3], K, distCoeffs=None)
+  kp_reprojected = np.float32(kp_reprojected[:, 0, :])  # Reshape to (N, 2)
+  ```
+  Here, `cloud` is an array of 3D points (shape: \( N \times 3 \)), and the result `kp_reprojected` is an array of projected 2D points (shape: \( N \times 2 \)).
+
+#### 3. Compute the Reprojection Error
+
+The reprojection error is computed as the Euclidean (L2) distance between the reprojected 2D points and the original observed keypoints.
+
+- **Error Calculation:**  
+  For each point \( i \), the error is:
+  \[
+  \text{error}_i = \| \text{kp\_reprojected}_i - \text{kp}_i \|
+  \]
+  The overall error is typically averaged over all \( N \) points:
+  ```python
+  error = cv2.norm(kp_reprojected, kp, cv2.NORM_L2)
+  mean_error = error / len(kp_reprojected)
+  ```
+  This mean reprojection error gives a single scalar value representing how well the 3D reconstruction fits the 2D observations.
+
+#### 4. Code Reference
+
+The following is the implementation of the `reprojection_error` function from the code:
+
+```python
+def reprojection_error(cloud, kp, trans_mat, K):
+    """
+    Projects 3D points back onto the image plane and computes the reprojection error.
+    
+    Parameters:
+      - cloud: Array of 3D points (shape: (N, 3)).
+      - kp: Observed 2D keypoints in the image (shape: (N, 2)).
+      - trans_mat: Camera transformation matrix (3x4), containing rotation and translation.
+      - K: Intrinsic camera matrix.
+    
+    Returns:
+      - mean error: Average reprojection error over all keypoints.
+      - cloud: The original 3D points.
+      - kp_reprojected: The 2D projections of the 3D points.
+    """
+    try:
+        # Extract the rotation from the transformation matrix.
+        R, _ = cv2.Rodrigues(trans_mat[:3, :3])
+        
+        # Project the 3D points to the 2D image plane.
+        kp_reprojected, _ = cv2.projectPoints(cloud, R, trans_mat[:3, 3], K, distCoeffs=None)
+        kp_reprojected = np.float32(kp_reprojected[:, 0, :])
+        
+        # Ensure the shapes of reprojected and observed keypoints match.
+        if kp_reprojected.shape != kp.shape:
+            raise Exception(f"Shape mismatch: reprojected {kp_reprojected.shape} vs original {kp.shape}")
+        
+        # Calculate the total L2 error and compute the average.
+        error = cv2.norm(kp_reprojected, kp, cv2.NORM_L2)
+        return error / len(kp_reprojected), cloud, kp_reprojected
+    except Exception as e:
+        raise Exception("Error in reprojection_error: " + str(e))
+```
+
+#### 5. Interpretation of the Error
+
+- **Low Error:**  
+  Indicates that the projected 3D points closely match the observed keypoints, suggesting that the camera pose estimation and 3D reconstruction are accurate.
+  
+- **High Error:**  
+  Suggests potential issues in the SfM pipeline, such as:
+  - Incorrect feature matching.
+  - Poor estimation of the camera pose.
+  - Inaccurate triangulation of the 3D points.
+
+The reprojection error is often used in **bundle adjustment**, a refinement step that optimizes both the 3D point positions and camera parameters by minimizing this error.
 
 ## 8. Final Output and Visualization
 
