@@ -1,24 +1,3 @@
----
-
-```markdown
-# Structure from Motion (SfM) Reconstruction Pipeline
-
-This document explains the pipeline implemented in the SfM code. The pipeline is modular and each section corresponds to a critical step in reconstructing a sparse 3D point cloud from a sequence of images. The code is written in Python and uses OpenCV for computer vision operations.
-
-## Table of Contents
-
-1. [Dataset Preparation](#dataset-preparation)
-2. [Camera Intrinsics Setup](#camera-intrinsics-setup)
-3. [Initialization](#initialization)
-4. [Feature Extraction & Matching](#feature-extraction--matching)
-5. [Relative Pose Estimation](#relative-pose-estimation)
-6. [Triangulation & Initial 3D Point Cloud Construction](#triangulation--initial-3d-point-cloud-construction)
-7. [Iterative PnP Registration and Point Cloud Update](#iterative-pnp-registration-and-point-cloud-update)
-8. [Final Output and Visualization](#final-output-and-visualization)
-9. [Error Handling and Robustness](#error-handling-and-robustness)
-
----
-
 ## 1. Dataset Preparation
 
 **Objective:**  
