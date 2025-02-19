@@ -29,7 +29,7 @@ This script reconstructs a sparse 3D point cloud from a sequence of images using
     - Saves the reconstructed 3D point cloud (with pixel colors) to a PLY file.
 
 Usage:
-    python sfm.py --input_folder /path/to/images --downsample 2.0 --output sparse.ply
+    python sfm.py --input_folder /path/to/images --downsample 2.0 --output sparse.ply [--K /path/to/calibration.txt]
 """
 
 import os
@@ -47,6 +47,8 @@ def parse_args():
                         help='Downsampling scale factor (default: 2.0, e.g., 2.0 means one pyrDown step)')
     parser.add_argument('--output', type=str, default='sparse.ply',
                         help='Output PLY file name (default: sparse.ply)')
+    parser.add_argument('--K', type=str, default=None,
+                        help='Path to a txt file containing a 3x3 camera calibration matrix')
     return parser.parse_args()
 
 def subsample(image, down_sample_factor):
@@ -168,8 +170,8 @@ def get_features(image1, image2):
         des2 = np.float32(des2)
         # FLANN-based matching
         FLANN_INDEX_KDTREE = 1
-        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=5)
-        search_params = dict(checks=50)
+        index_params = dict(algorithm=FLANN_INDEX_KDTREE, trees=10) # change this to get better results (default trees=5)
+        search_params = dict(checks=200) # change this to get better results (default checks=50)
         flann = cv2.FlannBasedMatcher(index_params, search_params)
         matches = flann.knnMatch(des1, des2, k=2)
         filtered_matches = []
@@ -188,7 +190,7 @@ def output(final_cloud, pixel_colour, output_filename):
     """
     try:
         # Scale the 3D points for visualization (adjust the factor as needed)
-        output_points = final_cloud.reshape(-1, 3) * 200  
+        output_points = final_cloud.reshape(-1, 3) * 200 # default 200  
         output_colors = pixel_colour.reshape(-1, 3)
         mesh = np.hstack([output_points, output_colors])
         # Optionally, clean the point cloud by removing outliers
@@ -241,25 +243,39 @@ def main():
     # --------------------------------------------------
     # 2. Camera Intrinsics Setup
     # --------------------------------------------------
-    # Use default intrinsics computed from the first image dimensions.
     down_sample = args.downsample
-    h, w, _ = dataset[0].shape
-    fx = w
-    fy = w  # assuming square pixels
-    cx = w / 2
-    cy = h / 2
-
-    K = np.array([[fx, 0, cx],
-                  [0, fy, cy],
-                  [0,  0,  1]], dtype=np.float64)
-
-    # Adjust K for the downsampling factor
-    K[0,0] /= down_sample
-    K[1,1] /= down_sample
-    K[0,2] /= down_sample
-    K[1,2] /= down_sample
-
-    print("Camera intrinsic matrix K:")
+    # If a calibration file is provided, load K from the file
+    if args.K is not None:
+        try:
+            K = np.loadtxt(args.K)
+            if K.shape != (3, 3):
+                raise ValueError("Calibration matrix must be 3x3.")
+            # Adjust K for the downsampling factor
+            K[0,0] /= down_sample
+            K[1,1] /= down_sample
+            K[0,2] /= down_sample
+            K[1,2] /= down_sample
+            print("Loaded calibration matrix K from file:")
+        except Exception as e:
+            print(f"Error loading calibration matrix from {args.K}: {e}")
+            sys.exit(1)
+    else:
+        # Use default intrinsics computed from the first image dimensions.
+        h, w, _ = dataset[0].shape
+        fx = w
+        fy = w  # assuming square pixels
+        cx = w / 2
+        cy = h / 2
+        K = np.array([[fx, 0, cx],
+                      [0, fy, cy],
+                      [0,  0,  1]], dtype=np.float64)
+        # Adjust K for the downsampling factor
+        K[0,0] /= down_sample
+        K[1,1] /= down_sample
+        K[0,2] /= down_sample
+        K[1,2] /= down_sample
+        print("Using default computed calibration matrix K:")
+    
     print(K)
     
     # --------------------------------------------------
